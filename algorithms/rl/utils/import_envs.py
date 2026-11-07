@@ -120,10 +120,12 @@ class Env(gym.Env):
 
         self.use_reduced_action_space = True
         if self.use_reduced_action_space:
-            n_valid_actuators = torch.where(self.designer.actuator.data.sum(1) > 0)[0].max()
-            self.env.action_space.low = self.env.action_space.low[:n_valid_actuators]
-            self.env.action_space.high = self.env.action_space.high[:n_valid_actuators]
-            self.env.action_space.shape = (n_valid_actuators,)
+            n_valid_actuators = int(torch.where(self.designer.actuator.data.sum(1) > 0)[0].max())
+            # NOTE: gym>=0.26 Box.shape is read-only, so build a new Box instead of mutating it
+            old_space = self.env.action_space
+            self.env.action_space = gym.spaces.Box(low=old_space.low[:n_valid_actuators],
+                                                   high=old_space.high[:n_valid_actuators],
+                                                   dtype=old_space.dtype)
         self.action_space = self.env.action_space
 
     def reset(self):
@@ -147,6 +149,12 @@ class Env(gym.Env):
             else:
                 action = np.concatenate([np.zeros((1,)), action])
         return self.env.step(action)
+
+    def seed(self, seed=None):
+        # NOTE: gym>=0.26 removed Env.seed(), but stable-baselines3 1.4 still calls it
+        np.random.seed(seed)
+        self.action_space.seed(seed)
+        return [seed]
 
     def render(self, mode):
         return self.env.render()

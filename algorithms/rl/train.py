@@ -142,7 +142,7 @@ if __name__ == "__main__":  # noqa: C901
         importlib.import_module(env_module)
 
     env_id = args.env
-    registered_envs = set(gym.envs.registry.env_specs.keys())  # pytype: disable=module-attr
+    registered_envs = set(getattr(gym.envs.registry, "env_specs", gym.envs.registry).keys())  # pytype: disable=module-attr
 
     # If the environment is not found, suggest the closest match
     if env_id not in registered_envs:

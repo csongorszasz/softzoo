@@ -15,7 +15,7 @@ from .utils.exp_manager import ExperimentManager
 from .utils.load_from_hub import download_from_hub
 from .utils.utils import StoreDict, get_model_path
 
-from dsrc.tools.general_utils import Logger
+from softzoo.tools.general_utils import Logger
 
 
 def main():  # noqa: C901
@@ -71,7 +71,7 @@ def main():  # noqa: C901
     args = parser.parse_args()
 
     # Logger
-    out_dir = os.environ.get('DSRC_OUT_DIR', '/tmp/tmp')
+    out_dir = os.environ.get("SOFTZOO_OUT_DIR", "/tmp/tmp")
     os.makedirs(out_dir, exist_ok=True)
     logger = Logger(out_dir)
     logger.print(vars(args))
