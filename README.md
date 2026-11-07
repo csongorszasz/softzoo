@@ -27,6 +27,11 @@ $ pip install -r requirements.txt
 (only required in some of the experiments/tools; also while we only tested with the following versions, other versions may still work).
 * [mesh_to_sdf-0.0.14](https://github.com/marian42/mesh_to_sdf)
 * [pynput-1.7.6](https://pypi.org/project/pynput/)
+    * if install fails on the `evdev` dependency, skip it via:
+        ```
+        pip install --no-deps pynput==1.7.6
+        pip install python-xlib six
+        ```
 * [seaborn-0.12.1](https://pypi.org/project/seaborn/)
 * [stable-baselines3-1.4.0](https://stable-baselines3.readthedocs.io/en/master/)
 * [huggingface-sb3-2.2.4](https://pypi.org/project/huggingface-sb3/)
@@ -43,8 +48,46 @@ $ cd softzoo/
 $ pip install -e .
 ```
 
+### (Troubleshooting) Vulkan 1.4 drivers
+On recent drivers that report Vulkan 1.4, Taichi's GGUI (which is used by every on-screen tool) aborts with ``Assertion `vulkanApiVersion ... <= 3' failed``. Taichi's bundled VulkanMemoryAllocator only accepts Vulkan ≤ 1.3. The workaround is to run with the Khronos Profiles layer, which makes the GPU report Vulkan 1.3.
+
+1. Download and extract the LunarG Vulkan SDK:
+    ```
+    $ mkdir -p ~/vulkan-sdk && cd ~/vulkan-sdk
+    $ wget https://sdk.lunarg.com/sdk/download/latest/linux/vulkan_sdk.tar.xz
+    $ tar xf vulkan_sdk.tar.xz && rm vulkan_sdk.tar.xz
+    ```
+2. Save the following wrapper as `~/vk13.sh`, then run `chmod +x ~/vk13.sh`:
+    ```bash
+    #!/bin/bash
+    SDK=$(ls -d $HOME/vulkan-sdk/*/x86_64 | tail -1)
+    export VK_LAYER_PATH=$SDK/share/vulkan/explicit_layer.d
+    export LD_LIBRARY_PATH=$SDK/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+    export VK_LOADER_LAYERS_ENABLE='*khronos_profiles'
+    export VK_KHRONOS_PROFILES_PROFILE_DIRS=$SDK/share/vulkan/registry/profiles
+    export VK_KHRONOS_PROFILES_PROFILE_NAME=VP_KHR_roadmap_2022
+    export VK_KHRONOS_PROFILES_SIMULATE_CAPABILITIES=SIMULATE_API_VERSION_BIT
+    export VK_KHRONOS_PROFILES_EMULATE_PORTABILITY=false
+    exec "$@"
+    ```
+3. Put the wrapper in front of any command that opens a window, for example `~/vk13.sh python -m algorithms.human.run ...`.
+
+### (Troubleshooting) CUDA out of memory on small GPUs
+If startup fails with `Out of CUDA pre-allocated memory`, the usual cause is `SIMULATOR.max_substeps_local` in the env config (`softzoo/configs/env_configs/*.yaml`).
+
+**Why it uses so much memory.** The simulator (MPM) represents the robot and its surroundings as up to `max_num_particles` points. Each point stores its position, velocity, deformation and so on. Forces are computed on a background 3D grid of cells. The grid has `128 × quality` cells along each axis, so `quality: 1` gives 128 × 128 × 128 ≈ 2.1 million cells. Each rendered frame is split into many small time steps called substeps. The simulator keeps a separate copy of all particle and grid data for `max_substeps_local + 1` consecutive substeps, stored as 64-bit floats. With the default of 20, that is 21 copies:
+```
+particles: 21 × 150,000 particles × ~60 values × 8 bytes ≈ 1.6 GB
+grid:      21 × 128³ cells        ×  ~7 values × 8 bytes ≈ 2.5 GB
+                                                   total ≈ 4 GB
+```
+
+**Fix:**
+- **Runs that don't compute gradients** (e.g. human control): set `max_substeps_local: 2`, as in `human.yaml`. Each substep only reads the current copy and writes the next one, so 2 copies are enough. The extra copies exist only for computing gradients backward through time.
+- **Runs that compute gradients** (`needs_grad: True`, e.g. the `diffsim_*` scripts): these use checkpointing. Instead of keeping every substep of a long run in GPU memory, the simulator keeps `max_substeps_local` substeps on the GPU. It saves a snapshot (checkpoint) of the state after each block, on `checkpoint_cache_device`, which can be CPU memory. During the backward pass it recomputes each block from its snapshot. A smaller `max_substeps_local` (e.g. 5) uses less GPU memory. The trade-off is more snapshots: `max_substeps / max_substeps_local` of them. Lowering `max_num_particles` or `quality` also reduces memory.
+
 ## Download Assets
-Download the assets from [drive](https://drive.google.com/drive/folders/1AYeZsr2ZMb1DkeOndQM0nBlNfx7dorUL?usp=sharing) and put them in [./softzoo/assets](./softzoo/assets). They should follow the folder structure,
+Download the assets from [drive](https://drive.google.com/drive/folders/1AYeZsr2ZMb1DkeOndQM0nBlNfx7dorUL?usp=sharing) **(UNREACHABLE as of 2026.11.06)** and put them in [./softzoo/assets](./softzoo/assets). They should follow the folder structure,
 ```
 ├── assets
 │   ├── meshes
