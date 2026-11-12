@@ -71,6 +71,22 @@ On recent drivers that report Vulkan 1.4, Taichi's GGUI (which is used by every 
     exec "$@"
     ```
 3. Put the wrapper in front of any command that opens a window, for example `~/vk13.sh python -m algorithms.human.run ...`.
+4. Also use it on **headless machines** (for example a server you reach over ssh, with no display). Saving rendered videos also goes through GGUI. This includes `--render-every-iter` in `algorithms.diffsim.run` and any other script that writes `.mp4` files. So a run without a window aborts with the same assertion, and Python dumps core. For example:
+    ```
+    $ ~/vk13.sh bash scripts/diffsim_with_annotated_pcd.sh
+    ```
+    Check whether a machine needs this with `vulkaninfo --summary | grep apiVersion`. You need the wrapper if it reports `1.4.x`.
+
+### (Troubleshooting) `PyOpenGL-accelerate` fails to build with a recent gcc
+With a recent compiler, for example the `c-compiler` from conda-forge (gcc 15), `pip install -r requirements.txt` stops with `Failed building wheel for PyOpenGL-accelerate`. The log shows these errors in `src/numpy_formathandler.c`:
+```
+error: passing argument 1 of ... from incompatible pointer type [-Wincompatible-pointer-types]
+error: returning 'void *' from a function with return type 'int' makes integer from pointer without a cast [-Wint-conversion]
+```
+Since gcc 14, these warnings are errors by default, and the C code generated for PyOpenGL-accelerate 3.1.6 doesn't meet them. pip aborts the whole requirements install, so **none** of the packages get installed. Downgrade the two errors back to warnings and install again:
+```
+$ CFLAGS="-Wno-error=incompatible-pointer-types -Wno-error=int-conversion" pip install -r requirements.txt
+```
 
 ### (Troubleshooting) CUDA out of memory on small GPUs
 If startup fails with `Out of CUDA pre-allocated memory`, the usual cause is `SIMULATOR.max_substeps_local` in the env config (`softzoo/configs/env_configs/*.yaml`).
